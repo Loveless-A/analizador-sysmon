@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analizador Sysmon</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="css/styles.css"/>
+</head>
+<body class="bg-[#05070f] text-slate-300 min-h-screen antialiased">
+<div id="dashboard-section">
+  <div class="app">
+    <div id="status-message"></div>
+    <div id="progress-container" class="hidden">
+      <div style="width:100%; height:6px; background:#1e293b;">
+        <div id="progress-bar" style="height:6px; width:0%; background:#22d3ee;"></div>
+      </div>
+      <div id="progress-percent">0%</div>
+    </div>
+    <header class="header">
+      <div>
+        <h1>Analizador Sysmon</h1>
+        <p>Dashboard de telemetría y detección</p>
+      </div>
+      <button id="theme-toggle" class="btn-primary">
+        🌙 Tema
+      </button>
+      <div class="badge">
+        python -m http.server
+      </div>
+    </header>
+    <section class="panel">
+      <div id="drop-area" class="dropzone">
+        <p>Arrastra o selecciona un archivo JSON</p>
+        <button id="select-file-btn">Seleccionar archivo</button>
+        <input id="file-input" type="file" accept="application/json" hidden />
+      </div>
+    </section>
+    <section class="grid kpis">
+      <div class="card"><p>Eventos</p><h3 id="total-events">0</h3></div>
+      <div class="card"><p>Alertas</p><h3 id="total-alerts">0</h3></div>
+      <div class="card">
+        <p>Severidad de Alertas</p>
+        <h3 id="severity-summary" class="text-sm font-semibold mt-1">-</h3>
+      </div>
+      <div class="card">
+        <button id="export-btn" class="w-full">Exportar JSON</button>
+      </div>
+    </section>
+    <section class="card grid gap-4 mt-4" style="grid-template-columns: 1fr 1fr;">
+      <div>
+        <h4 class="text-xs uppercase font-mono tracking-wider text-slate-400">Ventana Temporal del Lote</h4>
+        <p id="time-window-summary" class="text-sm text-cyan-400 mt-2">Sin archivos cargados</p>
+      </div>
+      <div>
+        <h4 class="text-xs uppercase font-mono tracking-wider text-slate-400">Distribución Cuantitativa (EventID)</h4>
+        <div id="eventid-breakdown" class="flex flex-wrap gap-2 mt-2 text-xs font-mono text-slate-400">
+          Esperando datos...
+        </div>
+      </div>
+    </section>
+    <section class="grid charts">
+      <div class="card">
+        <h4>Severidad</h4>
+        <div class="chart-box">
+          <canvas id="severity-chart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Eventos por ID</h4>
+        <div class="chart-box">
+          <canvas id="eventid-chart"></canvas>
+        </div>
+      </div>
+    </section>
+    <section class="card">
+      <h4>Timeline</h4>
+      <div class="chart-box small">
+        <canvas id="timeline-chart"></canvas>
+      </div>
+    </section>
+    <section class="card table-card space-y-3.5">
+  <div class="table-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800/80 pb-3">
+    <div>
+      <h3 class="text-xs font-bold text-slate-200 font-mono uppercase tracking-wide">
+        Eventos de Alerta Identificados
+      </h3>
+      <p class="text-[10px] text-slate-500">
+        Mapeo de telemetría forense en tiempo real.
+      </p>
+    </div>
+    <div class="filters flex flex-wrap items-center gap-2">
+      <select id="severity-filter" class="rounded border border-slate-800 bg-slate-950 px-2 py-1 text-[10px] text-slate-300">
+        <option value="all">Todas las severidades</option>
+        <option value="Critical">Critical</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+        <option value="Info">Info</option>
+      </select>
+      <select id="category-filter" class="rounded border border-slate-800 bg-slate-950 px-2 py-1 text-[10px] text-slate-300">
+        <option value="all">Todas las categorías</option>
+      </select>
+      <select id="alert-type-filter" class="rounded border border-slate-800 bg-slate-950 px-2 py-1 text-[10px] text-slate-300">
+          <option value="all">Todos los tipos</option>
+          <option value="PowerShell">PowerShell</option>
+          <option value="RDP">RDP</option>
+          <option value="Registry">Registry</option>
+          <option value="Process">Process</option>
+          <option value="File">File</option>
+          <option value="Comportamiento">Comportamiento</option>
+      </select>
+      <input id="search-input"
+        type="search"
+        placeholder="Filtrar registros..."
+        class="rounded border border-slate-800 bg-slate-950 px-2.5 py-1 text-[10px] text-slate-200" />
+    </div>
+  </div>
+  <div class="audit-frame border border-slate-800/80 rounded-lg overflow-auto bg-slate-950/20">
+    <table id="alertsTable" class="compact-table">
+      <thead>
+        <tr>
+          <th data-sort="timestamp">Timestamp</th>
+          <th data-sort="severity">Severidad</th>
+          <th data-sort="rule">Regla</th>
+          <th data-sort="type">Tipo</th>
+          <th data-sort="indicator">Indicador Base</th>
+          <th data-sort="mitre">MITRE</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody id="alerts-table-body"></tbody>
+    </table>
+  </div>
+</section>
+    <section class="card">
+      <h4>Reglas personalizadas</h4>
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 14px 20px;">
+        <input id="rule-name" placeholder="Nombre de regla" class="input" />
+        <input id="rule-category" placeholder="Categoría" class="input" />
+        <select id="rule-severity" class="input">
+          <option>Critical</option>
+          <option>High</option>
+          <option>Medium</option>
+          <option>Low</option>
+          <option>Info</option>
+        </select>
+        <select id="type-filter" class="input">
+          <option value="all">Todos los tipos</option>
+          <option value="PowerShell">PowerShell</option>
+          <option value="RDP">RDP</option>
+          <option value="Registry">Registry</option>
+          <option value="Process">Process</option>
+        </select>
+        <input id="rule-mitre" placeholder="MITRE (ej: T1059.001)" class="input" />
+        <div></div>
+        <textarea id="rule-pattern" placeholder="Ej. (e.CommandLine.includes('powershell'))"
+          class="input"
+          style="grid-column: 1 / -1; height: 80px;">
+        </textarea>
+      </div>
+      <button id="add-rule-btn" class="btn-primary mt-2">
+        Agregar regla
+      </button>
+      <div id="custom-rules-list" class="mt-3 text-xs text-slate-400"></div>
+    </section>
+  </div>
+</div>
+<div id="event-modal" class="hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="modal-rule-summary"></h3>
+      <button id="modal-close">✕</button>
+    </div>
+    <pre id="modal-event-json"></pre>
+    <div class="modal-section">
+      <h4>Regla disparada</h4>
+      <ul id="modal-rule-list"></ul>
+    </div>
+    <button id="export-event-btn" class="btn-primary">
+      Exportar evento
+    </button>
+  </div>
+</div>
+<script src="js/parser.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/alert-engine.js"></script>
+<script src="js/ui-dashboard.js"></script>
+<script src="js/ui-alerts.js"></script>
+<script src="js/exporter.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
